@@ -1,3 +1,4 @@
+use std::iter::FromIterator;
 use std::mem::swap;
 use std::sync::Arc;
 
@@ -66,7 +67,7 @@ impl<A> Default for Chunk<A> {
     }
 }
 
-pub struct Seq<A> {
+pub struct RawSeq<A> {
     length: usize,
     middle_length: usize,
     outer_f: Arc<Chunk<A>>,
@@ -76,15 +77,15 @@ pub struct Seq<A> {
     outer_b: Arc<Chunk<A>>,
 }
 
-impl<A: Clone> Default for Seq<A> {
+impl<A: Clone> Default for RawSeq<A> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<A> Clone for Seq<A> {
+impl<A> Clone for RawSeq<A> {
     fn clone(&self) -> Self {
-        Seq {
+        RawSeq {
             length: self.length,
             middle_length: self.middle_length,
             outer_f: self.outer_f.clone(),
@@ -96,9 +97,9 @@ impl<A> Clone for Seq<A> {
     }
 }
 
-impl<A: Clone> Seq<A> {
+impl<A: Clone> RawSeq<A> {
     pub fn new() -> Self {
-        Seq {
+        RawSeq {
             length: 0,
             middle_length: 0,
             outer_f: Default::default(),
@@ -250,9 +251,9 @@ impl<A: Clone> Seq<A> {
         let outer_b1 = self.outer_b.clone();
         self.push_buffer_back(outer_b1);
         let inner_f2 = other.inner_f.clone();
-        other.push_buffer_back(inner_f2);
+        other.push_buffer_front(inner_f2);
         let outer_f2 = other.outer_f.clone();
-        other.push_buffer_back(outer_f2);
+        other.push_buffer_front(outer_f2);
 
         let middle_len = self.middle.len();
         let back1_len = self.middle.last().map(|c| c.len());
@@ -318,12 +319,12 @@ impl<A: Clone> Seq<A> {
 
         if local_index < self.outer_f.len() {
             let (of1, of2) = self.outer_f.split(local_index);
-            let left = Seq {
+            let left = RawSeq {
                 length: index,
                 outer_f: Arc::new(of1),
-                ..Seq::new()
+                ..RawSeq::new()
             };
-            let right = Seq {
+            let right = RawSeq {
                 length: self.length - index,
                 middle_length: self.middle_length,
                 outer_f: Arc::new(of2),
@@ -339,13 +340,13 @@ impl<A: Clone> Seq<A> {
 
         if local_index < self.inner_f.len() {
             let (if1, if2) = self.inner_f.split(local_index);
-            let left = Seq {
+            let left = RawSeq {
                 length: index,
                 outer_f: self.outer_f.clone(),
                 outer_b: Arc::new(if1),
-                ..Seq::new()
+                ..RawSeq::new()
             };
-            let right = Seq {
+            let right = RawSeq {
                 length: self.length - index,
                 middle_length: self.middle_length,
                 outer_f: Arc::new(if2),
@@ -363,7 +364,7 @@ impl<A: Clone> Seq<A> {
             let (m1, c, m2, m1_len, m2_len) = self.split_middle(local_index);
             local_index -= m1_len;
             let (c1, c2) = c.split(local_index);
-            let left = Seq {
+            let left = RawSeq {
                 length: index,
                 middle_length: m1_len,
                 outer_f: self.outer_f.clone(),
@@ -372,7 +373,7 @@ impl<A: Clone> Seq<A> {
                 inner_b: Default::default(),
                 outer_b: Arc::new(c1),
             };
-            let right = Seq {
+            let right = RawSeq {
                 length: self.length - index,
                 middle_length: m2_len,
                 outer_f: Arc::new(c2),
@@ -388,20 +389,20 @@ impl<A: Clone> Seq<A> {
 
         if local_index < self.inner_b.len() {
             let (ib1, ib2) = self.inner_b.split(local_index);
-            let left = Seq {
+            let left = RawSeq {
                 length: index,
                 middle_length: self.middle_length,
-                outer_b: Arc::new(ib2),
+                outer_b: Arc::new(ib1),
                 inner_b: Default::default(),
                 middle: self.middle.clone(),
                 inner_f: self.inner_f.clone(),
                 outer_f: self.outer_f.clone(),
             };
-            let right = Seq {
+            let right = RawSeq {
                 length: self.length - index,
-                outer_b: self.outer_f.clone(),
-                outer_f: Arc::new(ib1),
-                ..Seq::new()
+                outer_b: self.outer_b.clone(),
+                outer_f: Arc::new(ib2),
+                ..RawSeq::new()
             };
             return (left, right);
         }
@@ -409,31 +410,126 @@ impl<A: Clone> Seq<A> {
         local_index -= self.inner_b.len();
 
         let (ob1, ob2) = self.outer_b.split(local_index);
-        let left = Seq {
+        let left = RawSeq {
             length: index,
             middle_length: self.middle_length,
-            outer_b: Arc::new(ob2),
-            inner_b: self.inner_f.clone(),
+            outer_b: Arc::new(ob1),
+            inner_b: self.inner_b.clone(),
             middle: self.middle.clone(),
             inner_f: self.inner_f.clone(),
             outer_f: self.outer_f.clone(),
         };
-        let right = Seq {
+        let right = RawSeq {
             length: self.length - index,
-            outer_b: Arc::new(ob1),
-            ..Seq::new()
+            outer_b: Arc::new(ob2),
+            ..RawSeq::new()
         };
         (left, right)
+    }
+}
+
+impl<A: Clone> FromIterator<A> for RawSeq<A> {
+    fn from_iter<I>(iter: I) -> Self
+    where
+        I: IntoIterator<Item = A>,
+    {
+        let mut seq = Self::new();
+        for item in iter {
+            seq.push_back(item)
+        }
+        seq
+    }
+}
+
+enum Section {
+    OuterF,
+    InnerF,
+    Middle,
+    InnerB,
+    OuterB,
+}
+
+use self::Section::*;
+
+pub struct Iter<A> {
+    seq: RawSeq<A>,
+    section: Section,
+    mid_index: usize,
+    index: usize,
+    chunk: Arc<Chunk<A>>,
+}
+
+impl<A> Iter<A> {
+    pub fn new(seq: &RawSeq<A>) -> Self {
+        Iter {
+            seq: seq.clone(),
+            section: OuterF,
+            mid_index: 0,
+            index: 0,
+            chunk: seq.outer_f.clone(),
+        }
+    }
+}
+
+impl<A: Clone> Iterator for Iter<A> {
+    type Item = A;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.index < self.chunk.len() {
+            let value = Some(self.chunk.values[self.index].clone());
+            self.index += 1;
+            return value;
+        }
+        match self.section {
+            OuterF => {
+                self.section = InnerF;
+                self.index = 0;
+                self.chunk = self.seq.inner_f.clone();
+                self.next()
+            }
+            InnerF => {
+                self.index = 0;
+                if let Some(chunk) = self.seq.middle.first() {
+                    self.section = Middle;
+                    self.mid_index = 0;
+                    self.chunk = chunk.clone();
+                } else {
+                    self.section = InnerB;
+                    self.chunk = self.seq.inner_b.clone();
+                }
+                self.next()
+            }
+            Middle => {
+                self.mid_index += 1;
+                self.index = 0;
+                if self.mid_index < self.seq.middle.len() {
+                    self.chunk = self.seq.middle[self.mid_index].clone();
+                } else {
+                    self.section = InnerB;
+                    self.chunk = self.seq.inner_b.clone();
+                }
+                self.next()
+            }
+            InnerB => {
+                self.section = OuterB;
+                self.index = 0;
+                self.chunk = self.seq.outer_b.clone();
+                self.next()
+            }
+            OuterB => None,
+        }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use proptest::collection::vec;
+    use proptest::num::{i32, usize};
 
     #[test]
     fn push_and_pop_things() {
-        let mut seq = Seq::new();
+        let mut seq = RawSeq::new();
         for i in 0..1000 {
             seq.push_back(i);
         }
@@ -451,32 +547,68 @@ mod test {
     }
 
     #[test]
-    fn concat() {
-        let mut seq1 = Seq::new();
-        let mut seq2 = Seq::new();
-        for i in 0..1000 {
-            seq1.push_back(i);
-            seq2.push_back(i + 1000);
+    fn split_min() {
+        let vec = vec![
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+            0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, -1, 0, 0, 0,
+        ];
+        let split_index = 2883023423041211622 % vec.len();
+        let seq: RawSeq<i32> = RawSeq::from_iter(vec.iter().cloned());
+        let (seq1, seq2) = seq.split(split_index);
+        assert_eq!(seq1.len(), split_index);
+        assert_eq!(seq2.len(), seq.len() - split_index);
+        for (index, item) in Iter::new(&seq1).enumerate() {
+            println!("left index {} item {} vs {}", index, vec[index], item);
+            assert_eq!(vec[index], item);
         }
-        seq1.concat(seq2);
-        for i in 0..2000 {
-            assert_eq!(Some(i), seq1.pop_front());
+        for (index, item) in Iter::new(&seq2).enumerate() {
+            println!(
+                "right index {} item {} vs {}",
+                split_index + index,
+                vec[split_index + index],
+                item
+            );
+            assert_eq!(vec[split_index + index], item);
         }
-        assert!(seq1.is_empty());
     }
 
-    #[test]
-    fn split() {
-        let mut seq = Seq::new();
-        for i in 0..2000 {
-            seq.push_back(i);
+    proptest! {
+        #[test]
+        fn iter(ref vec in vec(i32::ANY, 0..1000)) {
+            let seq = RawSeq::from_iter(vec.iter().cloned());
+            for (index, item) in Iter::new(&seq).enumerate() {
+                assert_eq!(vec[index], item);
+            }
+            assert_eq!(vec.len(), seq.len());
         }
-        let (mut seq1, mut seq2) = seq.split(1000);
-        for i in 0..1000 {
-            assert_eq!(Some(i), seq1.pop_front());
+
+        #[test]
+        fn split(ref vec in vec(i32::ANY, 0..2000), split_pos in usize::ANY) {
+            let split_index = split_pos % vec.len();
+            let seq = RawSeq::from_iter(vec.iter().cloned());
+            let (seq1, seq2) = seq.split(split_index);
+            assert_eq!(seq1.len(), split_index);
+            assert_eq!(seq2.len(), seq.len() - split_index);
+            for (index, item) in Iter::new(&seq1).enumerate() {
+                assert_eq!(vec[index], item);
+            }
+            for (index, item) in Iter::new(&seq2).enumerate() {
+                assert_eq!(vec[split_index + index], item);
+            }
         }
-        for i in 1000..2000 {
-            assert_eq!(Some(i), seq2.pop_front());
+
+        #[test]
+        fn concat(ref vec1 in vec(i32::ANY, 0..1000), ref vec2 in vec(i32::ANY, 0..1000)) {
+            let mut seq1 = RawSeq::from_iter(vec1.iter().cloned());
+            let seq2 = RawSeq::from_iter(vec2.iter().cloned());
+            seq1.concat(seq2);
+            let mut vec = vec1.clone();
+            vec.extend(vec2);
+            assert_eq!(seq1.len(), vec.len());
+            for (index, item) in Iter::new(&seq1).enumerate() {
+                assert_eq!(vec[index], item);
+            }
         }
     }
 }

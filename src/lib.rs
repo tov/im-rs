@@ -251,6 +251,8 @@ pub mod hashset;
 pub mod catlist;
 #[macro_use]
 pub mod vector;
+#[macro_use]
+pub mod seq;
 
 pub mod iter;
 pub mod shared;
