@@ -148,25 +148,18 @@ where
 /// mutable operations.
 ///
 /// [vector::Vector]: ../vector/struct.Vector.html
-pub struct ConsList<A> {
-    link: ConsLink<A>,
-    len:  usize,
-}
-
-type ConsLink<A> = Option<Arc<ConsListNode<A>>>;
+pub struct ConsList<A>(Option<Arc<ConsListNode<A>>>);
 
 struct ConsListNode<A> {
     car: Arc<A>,
-    cdr: ConsLink<A>,
+    cdr: ConsList<A>,
+    len: usize,
 }
 
 impl<A> ConsList<A> {
     /// Construct an empty list.
     pub fn new() -> ConsList<A> {
-        ConsList {
-            link: None,
-            len:  0,
-        }
+        ConsList(None)
     }
 
     /// Construct a list with a single element.
@@ -174,20 +167,18 @@ impl<A> ConsList<A> {
     where
         R: Shared<A>,
     {
-        ConsList {
-            link: Some(Arc::new(ConsListNode {
-                car: v.shared(),
-                cdr: None,
-            })),
+        ConsList(Some(Arc::new(ConsListNode {
+            car: v.shared(),
+            cdr: ConsList::new(),
             len: 1,
-        }
+        })))
     }
 
     /// Test whether a list is empty.
     ///
     /// Time: O(1)
     pub fn is_empty(&self) -> bool {
-        self.link.is_none()
+        self.0.is_none()
     }
 
     /// Construct a list with a new value prepended to the front of
@@ -198,13 +189,11 @@ impl<A> ConsList<A> {
     where
         R: Shared<A>,
     {
-        ConsList {
-            link: Some(Arc::new(ConsListNode {
-                car: car.shared(),
-                cdr: self.link.clone(),
-            })),
-            len: self.len + 1,
-        }
+        ConsList(Some(Arc::new(ConsListNode {
+            car: car.shared(),
+            cdr: self.clone(),
+            len: self.len() + 1,
+        })))
     }
 
     /// Get the first element of a list.
@@ -213,7 +202,7 @@ impl<A> ConsList<A> {
     ///
     /// Time: O(1)
     pub fn head(&self) -> Option<Arc<A>> {
-        match self.link {
+        match self.0 {
             Some(ref arc) => Some(arc.car.clone()),
             _ => None,
         }
@@ -227,11 +216,8 @@ impl<A> ConsList<A> {
     ///
     /// Time: O(1)
     pub fn tail(&self) -> Option<ConsList<A>> {
-        match self.link {
-            Some(ref arc) => Some(ConsList {
-                link: arc.cdr.clone(),
-                len:  self.len - 1,
-            }),
+        match self.0 {
+            Some(ref arc) => Some(arc.cdr.clone()),
             _ => None,
         }
     }
@@ -270,12 +256,9 @@ impl<A> ConsList<A> {
     /// [tail]: #method.tail
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     pub fn uncons(&self) -> Option<(Arc<A>, ConsList<A>)> {
-        match self.link {
+        match self.0 {
             None => None,
-            Some(ref arc) => Some((arc.car.clone(), ConsList {
-                link: arc.cdr.clone(),
-                len:  self.len - 1,
-            })),
+            Some(ref arc) => Some((arc.car.clone(), arc.cdr.clone())),
         }
     }
 
@@ -300,7 +283,10 @@ impl<A> ConsList<A> {
     /// # }
     /// ```
     pub fn len(&self) -> usize {
-        self.len
+        match self.0 {
+            None => 0,
+            Some(ref arc) => arc.len,
+        }
     }
 
     /// Append the list `right` to the end of the current list.
@@ -444,7 +430,7 @@ impl<A> ConsList<A> {
     }
 
     pub fn ptr_eq(&self, other: &Self) -> bool {
-        match (&self.link, &other.link) {
+        match (&self.0, &other.0) {
             (&Some(ref a1), &Some(ref a2)) => Arc::ptr_eq(a1, a2),
             (&None,         &None)         => true,
             _                              => false,
@@ -534,10 +520,7 @@ impl<A> Clone for ConsList<A> {
     ///
     /// Time: O(1)
     fn clone(&self) -> Self {
-        ConsList {
-            link: self.link.clone(),
-            len:  self.len,
-        }
+        ConsList(self.0.clone())
     }
 }
 
