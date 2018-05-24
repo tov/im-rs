@@ -26,7 +26,7 @@ fn conslist_cons(b: &mut Bencher) {
 fn conslist_uncons(b: &mut Bencher) {
     let l = ConsList::from_iter(0..1001);
     b.iter(|| {
-        let mut p = l.clone();
+        let mut p = &l;
         for _ in 0..1000 {
             p = p.tail().unwrap();
         }
@@ -51,12 +51,13 @@ fn conslist_sum(b: &mut Bencher) {
 
 #[bench]
 fn conslist_sum_no_iter(b: &mut Bencher) {
-    fn sum_list(mut l: ConsList<u32>) -> u32 {
-        let mut result = 0;
+    fn sum_list(l: ConsList<u32>) -> u32 {
+        let mut result  = 0;
+        let mut current = &l;
 
-        while let Some((car, cdr)) = l.uncons() {
-            result += *car;
-            l = cdr;
+        while let Some((car, cdr)) = current.uncons() {
+            result += **car;
+            current = cdr;
         }
 
         result

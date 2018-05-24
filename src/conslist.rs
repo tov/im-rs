@@ -31,6 +31,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::{FromIterator, Iterator, Sum};
+use std::mem;
 use std::ops::{Add, Deref};
 use std::sync::Arc;
 
@@ -201,9 +202,9 @@ impl<A> ConsList<A> {
     /// If the list is empty, `None` is returned.
     ///
     /// Time: O(1)
-    pub fn head(&self) -> Option<Arc<A>> {
+    pub fn head(&self) -> Option<&Arc<A>> {
         match self.0 {
-            Some(ref arc) => Some(arc.car.clone()),
+            Some(ref arc) => Some(&arc.car),
             _ => None,
         }
     }
@@ -215,9 +216,9 @@ impl<A> ConsList<A> {
     /// empty list. If the list is empty, the result is `None`.
     ///
     /// Time: O(1)
-    pub fn tail(&self) -> Option<ConsList<A>> {
+    pub fn tail(&self) -> Option<&ConsList<A>> {
         match self.0 {
-            Some(ref arc) => Some(arc.cdr.clone()),
+            Some(ref arc) => Some(&arc.cdr),
             _ => None,
         }
     }
@@ -255,14 +256,14 @@ impl<A> ConsList<A> {
     /// [head]: #method.head
     /// [tail]: #method.tail
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn uncons(&self) -> Option<(Arc<A>, ConsList<A>)> {
+    pub fn uncons(&self) -> Option<(&Arc<A>, &ConsList<A>)> {
         match self.0 {
             None => None,
-            Some(ref arc) => Some((arc.car.clone(), arc.cdr.clone())),
+            Some(ref arc) => Some((&arc.car, &arc.cdr)),
         }
     }
 
-    pub fn uncons2(&self) -> Option<(Arc<A>, Arc<A>, ConsList<A>)> {
+    pub fn uncons2(&self) -> Option<(&Arc<A>, &Arc<A>, &ConsList<A>)> {
         self.uncons()
             .and_then(|(a1, d)| d.uncons().map(|(a2, d)| (a1, a2, d)))
     }
@@ -359,7 +360,7 @@ impl<A> ConsList<A> {
             cmp: &Fn(&A, &A) -> Ordering,
         ) -> ConsList<A> {
             match (la.uncons(), lb.uncons()) {
-                (Some((ref a, _)), Some((ref b, ref lb1))) if cmp(a, b) == Ordering::Greater => {
+                (Some((a, _)), Some((b, lb1))) if cmp(a, b) == Ordering::Greater => {
                     cons(b.clone(), &merge(la, lb1, cmp))
                 }
                 (Some((a, la1)), Some((_, _))) => cons(a.clone(), &merge(&la1, lb, cmp)),
@@ -381,7 +382,7 @@ impl<A> ConsList<A> {
         fn merge_all<A>(l: &ConsList<ConsList<A>>, cmp: &Fn(&A, &A) -> Ordering) -> ConsList<A> {
             match l.uncons() {
                 None => conslist![],
-                Some((ref a, ref d)) if d.is_empty() => a.deref().clone(),
+                Some((a, d)) if d.is_empty() => ConsList::clone(&**a),
                 _ => merge_all(&merge_pairs(l, cmp), cmp),
             }
         }
@@ -393,7 +394,7 @@ impl<A> ConsList<A> {
             cmp: &Fn(&A, &A) -> Ordering,
         ) -> ConsList<ConsList<A>> {
             match l.uncons() {
-                Some((ref b, ref lb)) if cmp(a, b) != Ordering::Greater => {
+                Some((b, lb)) if cmp(a, b) != Ordering::Greater => {
                     ascending(&b.clone(), &|ys| f(cons(a.clone(), &ys)), lb, cmp)
                 }
                 _ => cons(f(ConsList::singleton(a.clone())), &sequences(l, cmp)),
@@ -407,7 +408,7 @@ impl<A> ConsList<A> {
             cmp: &Fn(&A, &A) -> Ordering,
         ) -> ConsList<ConsList<A>> {
             match lb.uncons() {
-                Some((ref b, ref bs)) if cmp(a, b) == Ordering::Greater => {
+                Some((b, bs)) if cmp(a, b) == Ordering::Greater => {
                     descending(&b.clone(), &cons(a.clone(), la), bs, cmp)
                 }
                 _ => cons(cons(a.clone(), la), &sequences(lb, cmp)),
@@ -416,10 +417,10 @@ impl<A> ConsList<A> {
 
         fn sequences<A>(l: &ConsList<A>, cmp: &Fn(&A, &A) -> Ordering) -> ConsList<ConsList<A>> {
             match l.uncons2() {
-                Some((ref a, ref b, ref xs)) if cmp(a, b) == Ordering::Greater => {
+                Some((a, b, xs)) if cmp(a, b) == Ordering::Greater => {
                     descending(&b.clone(), &ConsList::singleton(a.clone()), xs, cmp)
                 }
-                Some((ref a, ref b, ref xs)) => {
+                Some((a, b, xs)) => {
                     ascending(&b.clone(), &|l| cons(a.clone(), l), xs, cmp)
                 }
                 None => conslist![l.clone()],
@@ -647,10 +648,10 @@ impl<A> Iterator for Iter<A> {
     type Item = Arc<A>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.current.uncons() {
+        match mem::replace(&mut self.current, ConsList::new()).uncons() {
             None => None,
-            Some((ref a, ref d)) => {
-                self.current = d.clone();
+            Some((a, d)) => {
+                self.current = (*d).clone();
                 Some(a.clone())
             }
         }
