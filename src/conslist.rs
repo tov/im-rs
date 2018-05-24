@@ -127,6 +127,13 @@ where
     cdr.borrow().cons(car)
 }
 
+fn move_cons<A, RA>(car: RA, cdr: ConsList<A>) -> ConsList<A>
+where
+    RA: Shared<A>
+{
+    cdr.into_cons(car)
+}
+
 /// An immutable proper cons lists.
 ///
 /// The cons list is perhaps the most basic immutable data structure:
@@ -190,10 +197,24 @@ impl<A> ConsList<A> {
     where
         R: Shared<A>,
     {
-        ConsList(Some(Arc::new(ConsListNode {
-            car: car.shared(),
-            cdr: self.clone(),
+        self.clone().into_cons(car)
+    }
+
+    /// Construct a list with a new value prepended to the front of
+    /// the current list.
+    ///
+    /// Unlike [`ConsList::cons`](#method.cons), this method takes the list
+    /// by value to avoid a clone.
+    ///
+    /// Time: O(1)
+    pub fn into_cons<R>(self, car: R) -> ConsList<A>
+    where
+        R: Shared<A>,
+    {
+        ConsList(Some(Arc::new(ConsListNode{
             len: self.len() + 1,
+            car: car.shared(),
+            cdr: self,
         })))
     }
 
@@ -312,7 +333,7 @@ impl<A> ConsList<A> {
     {
         match self.uncons() {
             None => right.borrow().clone(),
-            Some((car, cdr)) => cons(car, &cdr.append(right)),
+            Some((car, cdr)) => move_cons(car, cdr.append(right)),
         }
     }
 
@@ -335,7 +356,7 @@ impl<A> ConsList<A> {
     pub fn reverse(&self) -> ConsList<A> {
         let mut out = ConsList::new();
         for i in self.iter() {
-            out = out.cons(i);
+            out = out.into_cons(i);
         }
         out
     }
@@ -361,9 +382,9 @@ impl<A> ConsList<A> {
         ) -> ConsList<A> {
             match (la.uncons(), lb.uncons()) {
                 (Some((a, _)), Some((b, lb1))) if cmp(a, b) == Ordering::Greater => {
-                    cons(b.clone(), &merge(la, lb1, cmp))
+                    move_cons(b.clone(), merge(la, lb1, cmp))
                 }
-                (Some((a, la1)), Some((_, _))) => cons(a.clone(), &merge(&la1, lb, cmp)),
+                (Some((a, la1)), Some((_, _))) => move_cons(a.clone(), merge(&la1, lb, cmp)),
                 (None, _) => lb.clone(),
                 (_, None) => la.clone(),
             }
@@ -374,7 +395,7 @@ impl<A> ConsList<A> {
             cmp: &Fn(&A, &A) -> Ordering,
         ) -> ConsList<ConsList<A>> {
             match l.uncons2() {
-                Some((a, b, rest)) => cons(merge(&a, &b, cmp), &merge_pairs(&rest, cmp)),
+                Some((a, b, rest)) => move_cons(merge(&a, &b, cmp), merge_pairs(&rest, cmp)),
                 _ => l.clone(),
             }
         }
@@ -395,9 +416,9 @@ impl<A> ConsList<A> {
         ) -> ConsList<ConsList<A>> {
             match l.uncons() {
                 Some((b, lb)) if cmp(a, b) != Ordering::Greater => {
-                    ascending(&b.clone(), &|ys| f(cons(a.clone(), &ys)), lb, cmp)
+                    ascending(&b.clone(), &|ys| f(move_cons(a.clone(), ys)), lb, cmp)
                 }
-                _ => cons(f(ConsList::singleton(a.clone())), &sequences(l, cmp)),
+                _ => move_cons(f(ConsList::singleton(a.clone())), sequences(l, cmp)),
             }
         }
 
@@ -411,7 +432,7 @@ impl<A> ConsList<A> {
                 Some((b, bs)) if cmp(a, b) == Ordering::Greater => {
                     descending(&b.clone(), &cons(a.clone(), la), bs, cmp)
                 }
-                _ => cons(cons(a.clone(), la), &sequences(lb, cmp)),
+                _ => move_cons(cons(a.clone(), la), sequences(lb, cmp)),
             }
         }
 
@@ -475,7 +496,7 @@ impl<A> ConsList<A> {
                 if car.deref() > item.deref() {
                     self.cons(item)
                 } else {
-                    cdr.insert_ref(item).cons(car)
+                    cdr.insert_ref(item).into_cons(car)
                 }
         }
     }
@@ -693,7 +714,7 @@ where
     {
         source
             .into_iter()
-            .fold(conslist![], |l, v| l.cons(v))
+            .fold(conslist![], |l, v| l.into_cons(v))
             .reverse()
     }
 }
