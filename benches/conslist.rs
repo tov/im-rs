@@ -42,3 +42,26 @@ fn conslist_append(b: &mut Bencher) {
         }
     })
 }
+
+#[bench]
+fn conslist_sum(b: &mut Bencher) {
+    let l = ConsList::from_iter(0..1000);
+    b.iter(|| l.iter().fold(0, |acc, x| acc + *x))
+}
+
+#[bench]
+fn conslist_sum_no_iter(b: &mut Bencher) {
+    fn sum_list(mut l: ConsList<u32>) -> u32 {
+        let mut result = 0;
+
+        while let Some((car, cdr)) = l.uncons() {
+            result += *car;
+            l = cdr;
+        }
+
+        result
+    }
+
+    let l = ConsList::from_iter(0..1000);
+    b.iter(|| sum_list(l.clone()))
+}
