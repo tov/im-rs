@@ -64,7 +64,7 @@ macro_rules! conslist {
     ( $($x:expr),* ) => {{
         let mut l = $crate::conslist::ConsList::new();
         $(
-            l = l.cons($x);
+            l = l.into_cons($x);
         )*
             l.reverse()
     }};
