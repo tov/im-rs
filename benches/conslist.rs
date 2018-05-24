@@ -65,3 +65,9 @@ fn conslist_sum_no_iter(b: &mut Bencher) {
     let l = ConsList::from_iter(0..1000);
     b.iter(|| sum_list(l.clone()))
 }
+
+#[bench]
+fn conslist_reverse(b: &mut Bencher) {
+    let l = ConsList::from_iter(0..1000);
+    b.iter(|| l.reverse())
+}
