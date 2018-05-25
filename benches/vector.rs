@@ -346,3 +346,12 @@ fn vector_extend_100(b: &mut Bencher) {
 fn vector_extend_1000(b: &mut Bencher) {
     vector_extend(b, 1000)
 }
+
+#[bench]
+fn vector_sort(b: &mut Bencher) {
+    let subvec = (0 .. 100).collect::<Vec<_>>();
+    let iter   = vec![subvec; 100].into_iter().flat_map(|x| x);
+    let vec    = Vector::from_iter(iter.clone());
+
+    b.iter(|| vec.sort())
+}
