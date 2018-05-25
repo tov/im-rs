@@ -1485,7 +1485,7 @@ mod test {
 
     #[test]
     fn double_ended_iterator() {
-        let vector = Vector::<i32>::from_iter(1..6);
+        let vector = Vector::from_iter(1..6);
         let mut it = vector.iter();
         assert_eq!(Some(&1), it.next());
         assert_eq!(Some(&5), it.next_back());
@@ -1567,7 +1567,7 @@ mod test {
 
         #[test]
         fn push_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::new();
+            let mut vector = Vector::new();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_front(value);
@@ -1578,7 +1578,7 @@ mod test {
 
         #[test]
         fn push_front_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::new();
+            let mut vector = Vector::new();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector.push_front_mut(value);
@@ -1624,7 +1624,7 @@ mod test {
 
         #[test]
         fn pop_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let mut vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_back().map(|(h, t)| (*h, t)) {
@@ -1641,7 +1641,7 @@ mod test {
 
         #[test]
         fn pop_back_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let mut vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_back_mut() {
@@ -1657,7 +1657,7 @@ mod test {
 
         #[test]
         fn pop_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let mut vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_front().map(|(h, t)| (*h, t)) {
@@ -1674,7 +1674,7 @@ mod test {
 
         #[test]
         fn pop_front_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let mut vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_front_mut() {
@@ -1690,7 +1690,7 @@ mod test {
 
         #[test]
         fn iterator(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             let mut it1 = input.iter().cloned();
             let mut it2 = vector.iter();
@@ -1706,7 +1706,7 @@ mod test {
 
         #[test]
         fn reverse_iterator(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             let mut it1 = input.iter().cloned().rev();
             let mut it2 = vector.iter().rev();
@@ -1736,7 +1736,7 @@ mod test {
 
         #[test]
         fn sort(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::<i32>::from_iter(input.iter().cloned());
+            let vector = Vector::from_iter(input.iter().cloned());
             let mut input_sorted = input.clone();
             input_sorted.sort();
             let sorted = Vector::from_iter(input_sorted.iter().cloned());
@@ -1745,7 +1745,7 @@ mod test {
 
         #[test]
         fn reverse(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
             let mut reversed = input.clone();
             reversed.reverse();
             for (index, value) in reversed.into_iter().enumerate() {
@@ -1759,7 +1759,7 @@ mod test {
 
         #[test]
         fn reversed_push_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::new().reverse();
+            let mut vector = Vector::new().reverse();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_front(value);
@@ -1773,7 +1773,7 @@ mod test {
 
         #[test]
         fn reversed_push_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::new().reverse();
+            let mut vector = Vector::new().reverse();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_back(value);
@@ -1785,7 +1785,7 @@ mod test {
 
         #[test]
         fn reversed_pop_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_front().map(|(h, t)| (*h, t)) {
@@ -1802,7 +1802,7 @@ mod test {
 
         #[test]
         fn reversed_pop_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_back().map(|(h, t)| (*h, t)) {
