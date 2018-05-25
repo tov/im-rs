@@ -32,6 +32,26 @@ fn vector_sum_iter_1000(b: &mut Bencher) {
     vector_sum_iter(b, 1000);
 }
 
+fn vector_sum_iter_ref(b: &mut Bencher, count: usize) {
+    let v = Vector::from_iter(0..count);
+    b.iter(|| v.clone().ref_iter().map(|x| **x).sum::<usize>())
+}
+
+#[bench]
+fn vector_sum_iter_ref_10(b: &mut Bencher) {
+    vector_sum_iter_ref(b, 10);
+}
+
+#[bench]
+fn vector_sum_iter_ref_100(b: &mut Bencher) {
+    vector_sum_iter_ref(b, 100);
+}
+
+#[bench]
+fn vector_sum_iter_ref_1000(b: &mut Bencher) {
+    vector_sum_iter_ref(b, 1000);
+}
+
 fn vector_sum_get(b: &mut Bencher, count: usize) {
     let v = Vector::from_iter(0..count);
     b.iter(|| {
@@ -56,6 +76,32 @@ fn vector_sum_get_100(b: &mut Bencher) {
 #[bench]
 fn vector_sum_get_1000(b: &mut Bencher) {
     vector_sum_get(b, 1000);
+}
+
+fn vector_sum_get_ref(b: &mut Bencher, count: usize) {
+    let v = Vector::from_iter(0..count);
+    b.iter(|| {
+        let mut sum = 0;
+        for i in 0 .. v.len() {
+            sum += **v.get_ref(i).unwrap();
+        }
+        sum
+    })
+}
+
+#[bench]
+fn vector_sum_get_ref_10(b: &mut Bencher) {
+    vector_sum_get_ref(b, 10);
+}
+
+#[bench]
+fn vector_sum_get_ref_100(b: &mut Bencher) {
+    vector_sum_get_ref(b, 100);
+}
+
+#[bench]
+fn vector_sum_get_ref_1000(b: &mut Bencher) {
+    vector_sum_get_ref(b, 1000);
 }
 
 fn vector_push_front(b: &mut Bencher, count: usize) {

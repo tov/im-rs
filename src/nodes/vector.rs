@@ -15,9 +15,13 @@ pub enum Entry<A> {
 
 impl<A> Entry<A> {
     pub fn unwrap_val(&self) -> Arc<A> {
+        self.unwrap_val_ref().clone()
+    }
+
+    pub fn unwrap_val_ref(&self) -> &Arc<A> {
         match *self {
-            Entry::Value(ref v) => v.clone(),
-            _ => panic!("Entry::unwrap_val: tried to unwrap_val a non-value"),
+            Entry::Value(ref v) => v,
+            _ => panic!("Entry::unwrap_val_ref: tried to unwrap_val a non-value"),
         }
     }
 

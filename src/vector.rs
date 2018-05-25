@@ -174,6 +174,15 @@ impl<A> Vector<A> {
         Iter::new(self.clone())
     }
 
+    /// Get a by-reference iterator over a vector.
+    ///
+    /// Time: O(log n) per [`next()`][next] call
+    ///
+    /// [next]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
+    pub fn ref_iter(&self) -> RefIter<A> {
+        RefIter::new(self)
+    }
+
     /// Get the first element of a vector.
     ///
     /// If the vector is empty, `None` is returned.
@@ -233,17 +242,22 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn get(&self, index: usize) -> Option<Arc<A>> {
-        let i = match self.map_index(index) {
-            None => return None,
-            Some(i) => i,
-        };
+        self.get_ref(index).cloned()
+    }
 
+    /// Get a reference to the value at index `index` in a vector.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    ///
+    /// Time: O(log n)
+    pub fn get_ref(&self, index: usize) -> Option<&Arc<A>> {
+        let i    = self.map_index(index)?;
         let node = self.node_for(i);
         match node.get(i & HASH_MASK as usize) {
-            Some(&Entry::Value(ref value)) => Some(value.clone()),
-            Some(&Entry::Node(_)) => panic!("Vector::get: encountered node, expected value"),
-            Some(&Entry::Empty) => panic!("Vector::get: encountered null, expected value"),
-            None => panic!("Vector::get: unhandled index out of bounds situation!"),
+            Some(&Entry::Value(ref value)) => Some(value),
+            Some(&Entry::Node(_)) => panic!("Vector::get_ref: encountered node, expected value"),
+            Some(&Entry::Empty) => panic!("Vector::get_ref: encountered null, expected value"),
+            None => panic!("Vector::get_ref: unhandled index out of bounds situation!"),
         }
     }
 
@@ -1332,6 +1346,101 @@ impl<A> DoubleEndedIterator for Iter<A> {
 }
 
 impl<A> ExactSizeIterator for Iter<A> {}
+
+// By-reference iterator
+
+pub struct RefIter<'b, A: 'b> {
+    vector: &'b Vector<A>,
+    start_node: &'b Node<A>,
+    start_index: usize,
+    start_offset: usize,
+    end_node: &'b Node<A>,
+    end_index: usize,
+    end_offset: usize,
+}
+
+impl<'b, A> RefIter<'b, A> {
+    fn new(vector: &'b Vector<A>) -> Self {
+        let start = vector.meta.origin;
+        let start_index = start & !(HASH_MASK as usize);
+        let end = vector.meta.capacity;
+        let end_index = end & !(HASH_MASK as usize);
+        RefIter {
+            start_node: &vector.node_for(start_index),
+            end_node: &vector.node_for(end_index),
+            start_index,
+            start_offset: start - start_index,
+            end_index,
+            end_offset: end - end_index,
+            vector,
+        }
+    }
+
+    fn get_next(&mut self) -> Option<&'b Arc<A>> {
+        loop {
+            if self.len() == 0 {
+                return None;
+            }
+            if self.start_offset < HASH_SIZE {
+                let item = self.start_node.get(self.start_offset).unwrap().unwrap_val_ref();
+                self.start_offset += 1;
+                return Some(item);
+            }
+            self.start_offset = 0;
+            self.start_index += HASH_SIZE;
+            self.start_node = &self.vector.node_for(self.start_index);
+        }
+    }
+
+    fn get_next_back(&mut self) -> Option<&'b Arc<A>> {
+        loop {
+            if self.len() == 0 {
+                return None;
+            }
+            if self.end_offset > 0 {
+                self.end_offset -= 1;
+                let item = self.end_node.get(self.end_offset).unwrap().unwrap_val_ref();
+                return Some(item);
+            }
+            self.end_offset = HASH_SIZE;
+            self.end_index -= HASH_SIZE;
+            self.end_node = &self.vector.node_for(self.end_index);
+        }
+    }
+}
+
+impl<'b, A> Iterator for RefIter<'b, A> {
+    type Item = &'b Arc<A>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.vector.meta.reverse {
+            self.get_next_back()
+        } else {
+            self.get_next()
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.len();
+        (len, Some(len))
+    }
+}
+
+impl<'b, A> DoubleEndedIterator for RefIter<'b, A> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        if self.vector.meta.reverse {
+            self.get_next()
+        } else {
+            self.get_next_back()
+        }
+    }
+}
+
+impl<'b, A> ExactSizeIterator for RefIter<'b, A> {
+    fn len(&self) -> usize {
+        (self.end_index + self.end_offset) - (self.start_index + self.start_offset)
+    }
+}
 
 // QuickCheck
 
