@@ -13,8 +13,8 @@ use test::Bencher;
 use im::vector::Vector;
 
 fn vector_sum_iter(b: &mut Bencher, count: usize) {
-    let v = Vector::from_iter(0..count);
-    b.iter(|| v.clone().iter().map(|x| *x).sum::<usize>())
+    let v = Vector::<usize>::from_iter(0..count);
+    b.iter(|| v.clone().into_iter().sum::<usize>())
 }
 
 #[bench]
@@ -33,8 +33,8 @@ fn vector_sum_iter_1000(b: &mut Bencher) {
 }
 
 fn vector_sum_iter_ref(b: &mut Bencher, count: usize) {
-    let v = Vector::from_iter(0..count);
-    b.iter(|| v.clone().ref_iter().map(|x| **x).sum::<usize>())
+    let v = Vector::<usize>::from_iter(0..count);
+    b.iter(|| v.iter().map(|x| *x).sum::<usize>())
 }
 
 #[bench]
@@ -53,7 +53,7 @@ fn vector_sum_iter_ref_1000(b: &mut Bencher) {
 }
 
 fn vector_sum_get(b: &mut Bencher, count: usize) {
-    let v = Vector::from_iter(0..count);
+    let v = Vector::<usize>::from_iter(0..count);
     b.iter(|| {
         let mut sum = 0;
         for i in 0 .. v.len() {
@@ -78,35 +78,9 @@ fn vector_sum_get_1000(b: &mut Bencher) {
     vector_sum_get(b, 1000);
 }
 
-fn vector_sum_get_ref(b: &mut Bencher, count: usize) {
-    let v = Vector::from_iter(0..count);
-    b.iter(|| {
-        let mut sum = 0;
-        for i in 0 .. v.len() {
-            sum += **v.get_ref(i).unwrap();
-        }
-        sum
-    })
-}
-
-#[bench]
-fn vector_sum_get_ref_10(b: &mut Bencher) {
-    vector_sum_get_ref(b, 10);
-}
-
-#[bench]
-fn vector_sum_get_ref_100(b: &mut Bencher) {
-    vector_sum_get_ref(b, 100);
-}
-
-#[bench]
-fn vector_sum_get_ref_1000(b: &mut Bencher) {
-    vector_sum_get_ref(b, 1000);
-}
-
 fn vector_push_front(b: &mut Bencher, count: usize) {
     b.iter(|| {
-        let mut l = Vector::new();
+        let mut l = Vector::<usize>::new();
         for i in 0..count {
             l = l.push_front(i)
         }
@@ -130,7 +104,7 @@ fn vector_push_front_1000(b: &mut Bencher) {
 
 fn vector_push_back(b: &mut Bencher, count: usize) {
     b.iter(|| {
-        let mut l = Vector::new();
+        let mut l = Vector::<usize>::new();
         for i in 0..count {
             l = l.push_back(i)
         }
@@ -153,7 +127,7 @@ fn vector_push_back_1000(b: &mut Bencher) {
 }
 
 fn vector_pop_front(b: &mut Bencher, count: usize) {
-    let l = Vector::from_iter(0..(count + 1));
+    let l = Vector::<usize>::from_iter(0..(count + 1));
     b.iter(|| {
         let mut p = l.clone();
         for _ in 0..count {
@@ -178,7 +152,7 @@ fn vector_pop_front_1000(b: &mut Bencher) {
 }
 
 fn vector_pop_back(b: &mut Bencher, count: usize) {
-    let l = Vector::from_iter(0..(count + 1));
+    let l = Vector::<usize>::from_iter(0..(count + 1));
     b.iter(|| {
         let mut p = l.clone();
         for _ in 0..count {
@@ -203,7 +177,7 @@ fn vector_pop_back_1000(b: &mut Bencher) {
 }
 
 fn vector_append(b: &mut Bencher, count: usize) {
-    let size = Vec::from_iter((0..count).into_iter().map(|i| Vector::from_iter(0..i)));
+    let size = Vec::from_iter((0..count).into_iter().map(|i| Vector::<usize>::from_iter(0..i)));
     b.iter(|| {
         for item in &size {
             item.append(item.clone());
@@ -228,7 +202,7 @@ fn vector_append_1000(b: &mut Bencher) {
 
 fn vector_push_front_mut(b: &mut Bencher, count: usize) {
     b.iter(|| {
-        let mut l = Vector::new();
+        let mut l = Vector::<usize>::new();
         for i in 0..count {
             l.push_front_mut(i);
         }
@@ -252,7 +226,7 @@ fn vector_push_front_mut_1000(b: &mut Bencher) {
 
 fn vector_push_back_mut(b: &mut Bencher, count: usize) {
     b.iter(|| {
-        let mut l = Vector::new();
+        let mut l = Vector::<usize>::new();
         for i in 0..count {
             l.push_back_mut(i);
         }
@@ -275,7 +249,7 @@ fn vector_push_back_mut_1000(b: &mut Bencher) {
 }
 
 fn vector_pop_front_mut(b: &mut Bencher, count: usize) {
-    let l = Vector::from_iter(0..count);
+    let l = Vector::<usize>::from_iter(0..count);
     b.iter(|| {
         let mut p = l.clone();
         for _ in 0..count {
@@ -300,7 +274,7 @@ fn vector_pop_front_mut_1000(b: &mut Bencher) {
 }
 
 fn vector_pop_back_mut(b: &mut Bencher, count: usize) {
-    let l = Vector::from_iter(0..count);
+    let l = Vector::<usize>::from_iter(0..count);
     b.iter(|| {
         let mut p = l.clone();
         for _ in 0..count {
@@ -327,8 +301,8 @@ fn vector_pop_back_mut_1000(b: &mut Bencher) {
 fn vector_extend(b: &mut Bencher, count: usize) {
     let vec = Vec::from_iter(0..count);
     b.iter(|| {
-        let mut l: Vector<usize> = Vector::new();
-        l.extend(vec.iter());
+        let mut l = Vector::<usize>::new();
+        l.extend(vec.iter().cloned());
     })
 }
 
@@ -351,7 +325,7 @@ fn vector_extend_1000(b: &mut Bencher) {
 fn vector_sort(b: &mut Bencher) {
     let subvec = (0 .. 100).collect::<Vec<_>>();
     let iter   = vec![subvec; 100].into_iter().flat_map(|x| x);
-    let vec    = Vector::from_iter(iter.clone());
+    let vec    = Vector::<i32>::from_iter(iter);
 
     b.iter(|| vec.sort())
 }

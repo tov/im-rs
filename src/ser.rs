@@ -274,7 +274,7 @@ impl<A: Serialize + Hash + Eq, S: BuildHasher + Default> Serialize for HashSet<A
 
 // Vector
 
-impl<'de, A: Deserialize<'de>> Deserialize<'de> for Vector<A> {
+impl<'de, A: Clone + Deserialize<'de>> Deserialize<'de> for Vector<A> {
     fn deserialize<D>(des: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,

@@ -9,16 +9,12 @@ use bits::{HASH_BITS, HASH_MASK, HASH_SIZE};
 
 pub enum Entry<A> {
     Node(Arc<Node<A>>),
-    Value(Arc<A>),
+    Value(A),
     Empty,
 }
 
 impl<A> Entry<A> {
-    pub fn unwrap_val(&self) -> Arc<A> {
-        self.unwrap_val_ref().clone()
-    }
-
-    pub fn unwrap_val_ref(&self) -> &Arc<A> {
+    pub fn unwrap_val(&self) -> &A {
         match *self {
             Entry::Value(ref v) => v,
             _ => panic!("Entry::unwrap_val_ref: tried to unwrap_val a non-value"),
@@ -33,7 +29,7 @@ impl<A> Entry<A> {
     }
 }
 
-impl<A> Clone for Entry<A> {
+impl<A: Clone> Clone for Entry<A> {
     fn clone(&self) -> Self {
         match *self {
             Entry::Node(ref node) => Entry::Node(node.clone()),
@@ -108,7 +104,9 @@ impl<A> Node<A> {
             self.children[index] = value
         }
     }
+}
 
+impl<A: Clone> Node<A> {
     pub fn remove_before(&mut self, level: usize, index: usize) {
         let shifted = match level {
             0 => 0,
@@ -202,7 +200,7 @@ impl<A> Node<A> {
         }
     }
 
-    pub fn write<I: Iterator<Item = Arc<A>>>(
+    pub fn write<I: Iterator<Item = A>>(
         &mut self,
         level: usize,
         index: usize,
@@ -258,7 +256,7 @@ impl<A> Node<A> {
     }
 }
 
-impl<A> Clone for Node<A> {
+impl<A: Clone> Clone for Node<A> {
     fn clone(&self) -> Self {
         Node {
             first: self.first,

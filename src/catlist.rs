@@ -22,6 +22,7 @@ use std::cmp::Ordering;
 use std::fmt::{Debug, Error, Formatter};
 use std::hash::{Hash, Hasher};
 use std::iter::{FromIterator, Sum};
+use std::mem;
 use std::ops::{Add, Deref};
 use std::sync::Arc;
 use vector::Vector;
@@ -130,7 +131,7 @@ where
 pub struct CatList<A> {
     size: usize,
     head: Arc<Vec<Arc<A>>>,
-    tail: Vector<CatList<A>>,
+    tail: Vector<Arc<CatList<A>>>,
 }
 
 impl<A> CatList<A> {
@@ -159,7 +160,7 @@ impl<A> CatList<A> {
         }
     }
 
-    fn make<VA: Shared<Vec<Arc<A>>>>(size: usize, head: VA, tail: Vector<CatList<A>>) -> Self {
+    fn make<VA: Shared<Vec<Arc<A>>>>(size: usize, head: VA, tail: Vector<Arc<CatList<A>>>) -> Self {
         CatList {
             size,
             head: head.shared(),
@@ -292,7 +293,7 @@ impl<A> CatList<A> {
                 self.tail.clone(),
             ))
         } else {
-            Some(self.tail.iter().fold(CatList::new(), |a, b| a.append(b)))
+            Some(self.tail.iter().fold(CatList::new(), |a, b| a.append(b.clone())))
         }
     }
 
@@ -335,7 +336,7 @@ impl<A> CatList<A> {
                     CatList::make(
                         l.len() + r.len(),
                         l.head.clone(),
-                        tail_but_last.push_back(last_plus_right),
+                        tail_but_last.push_back(Arc::new(last_plus_right)),
                     )
                 } else {
                     CatList::make(
@@ -466,10 +467,9 @@ impl<A> CatList<A> {
             item
         } else {
             let item = self.head.last().cloned();
-            let tail = self.tail.clone();
+            let tail = mem::replace(&mut self.tail, Default::default());
             self.size = 0;
             self.head = Default::default();
-            self.tail = Default::default();
             for list in tail {
                 self.append_mut(list);
             }
@@ -942,7 +942,7 @@ impl<A> Iter<A> {
         let l = list.shared();
         let mut stack = Vec::new();
         let mut item = l.clone();
-        while let Some(last) = item.tail.last() {
+        while let Some(last) = item.tail.last().cloned() {
             stack.push((item, 1));
             item = last;
         }
@@ -973,7 +973,7 @@ impl<A> Iterator for Iter<A> {
             self.fwd_head_index += 1;
             self.remaining -= 1;
             Some(item.clone())
-        } else if let Some(list) = self.fwd_current.tail.get(self.fwd_tail_index) {
+        } else if let Some(list) = self.fwd_current.tail.get(self.fwd_tail_index).cloned() {
             self.fwd_stack
                 .push((self.fwd_current.clone(), self.fwd_tail_index + 1));
             self.fwd_current = list;
@@ -1004,7 +1004,8 @@ impl<A> DoubleEndedIterator for Iter<A> {
             let list = self.rev_current
                 .tail
                 .get((self.rev_current.tail.len() - 1) - self.rev_tail_index)
-                .unwrap();
+                .unwrap()
+                .clone();
             self.rev_stack
                 .push((self.rev_current.clone(), self.rev_tail_index + 1));
             self.rev_current = list;

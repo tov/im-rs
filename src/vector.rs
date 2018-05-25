@@ -59,11 +59,12 @@ macro_rules! vector {
     () => { $crate::vector::Vector::new() };
 
     ( $($x:expr),* ) => {{
-        let mut l = $crate::vector::Vector::new();
-        $(
-            l.push_back_mut($x);
-        )*
-            l
+        fn vec_to_vector<A: ::std::clone::Clone>(vec: ::std::vec::Vec<A>)
+            -> $crate::vector::Vector<A>
+        {
+            ::std::iter::FromIterator::from_iter(vec)
+        }
+        vec_to_vector(vec![$($x),*])
     }};
 }
 
@@ -127,11 +128,11 @@ impl<A> Vector<A> {
 
     /// Construct a vector with a single value.
     pub fn singleton<R>(a: R) -> Self
-    where
-        R: Shared<A>,
+        where
+            R: Into<A>,
     {
         let mut tail = Node::new();
-        tail.push(Entry::Value(a.shared()));
+        tail.push(Entry::Value(a.into()));
         Vector {
             meta: Default::default(),
             root: Default::default(),
@@ -164,23 +165,14 @@ impl<A> Vector<A> {
         self.len() == 0
     }
 
-    /// Get an iterator over a vector.
+    /// Get an by-reference iterator over a vector.
     ///
     /// Time: O(log n) per [`next()`][next] call
     ///
     /// [next]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
     #[inline]
     pub fn iter(&self) -> Iter<A> {
-        Iter::new(self.clone())
-    }
-
-    /// Get a by-reference iterator over a vector.
-    ///
-    /// Time: O(log n) per [`next()`][next] call
-    ///
-    /// [next]: https://doc.rust-lang.org/std/iter/trait.Iterator.html#tymethod.next
-    pub fn ref_iter(&self) -> RefIter<A> {
-        RefIter::new(self)
+        self.into_iter()
     }
 
     /// Get the first element of a vector.
@@ -189,10 +181,50 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     #[inline]
-    pub fn head(&self) -> Option<Arc<A>> {
+    pub fn head(&self) -> Option<&A> {
         self.get(0)
     }
 
+    /// Get the last element of a vector.
+    ///
+    /// If the vector is empty, `None` is returned.
+    ///
+    /// Time: O(log n)
+    pub fn last(&self) -> Option<&A> {
+        if self.is_empty() {
+            None
+        } else {
+            self.get(self.len() - 1)
+        }
+    }
+
+    /// Get a reference to the value at index `index` in a vector.
+    ///
+    /// Returns `None` if the index is out of bounds.
+    ///
+    /// Time: O(log n)
+    pub fn get(&self, index: usize) -> Option<&A> {
+        let i    = self.map_index(index)?;
+        let node = self.node_for(i);
+        match node.get(i & HASH_MASK as usize) {
+            Some(&Entry::Value(ref value)) => Some(value),
+            Some(&Entry::Node(_)) => panic!("Vector::get_ref: encountered node, expected value"),
+            Some(&Entry::Empty) => panic!("Vector::get_ref: encountered null, expected value"),
+            None => panic!("Vector::get_ref: unhandled index out of bounds situation!"),
+        }
+    }
+
+    /// Get the value at index `index` in a vector, directly.
+    ///
+    /// Panics if the index is out of bounds.
+    ///
+    /// Time: O(log n)
+    pub fn get_unwrapped(&self, index: usize) -> &A {
+        self.get(index).expect("get_unwrapped index out of bounds")
+    }
+}
+
+impl<A: Clone> Vector<A> {
     /// Get the vector without the first element.
     ///
     /// If the vector is empty, `None` is returned.
@@ -205,19 +237,6 @@ impl<A> Vector<A> {
             let mut v = self.clone();
             v.resize(1, self.len() as isize);
             Some(v)
-        }
-    }
-
-    /// Get the last element of a vector.
-    ///
-    /// If the vector is empty, `None` is returned.
-    ///
-    /// Time: O(log n)
-    pub fn last(&self) -> Option<Arc<A>> {
-        if self.is_empty() {
-            None
-        } else {
-            self.get(self.len() - 1)
         }
     }
 
@@ -236,48 +255,14 @@ impl<A> Vector<A> {
         }
     }
 
-    /// Get the value at index `index` in a vector.
-    ///
-    /// Returns `None` if the index is out of bounds.
-    ///
-    /// Time: O(log n)
-    pub fn get(&self, index: usize) -> Option<Arc<A>> {
-        self.get_ref(index).cloned()
-    }
-
-    /// Get a reference to the value at index `index` in a vector.
-    ///
-    /// Returns `None` if the index is out of bounds.
-    ///
-    /// Time: O(log n)
-    pub fn get_ref(&self, index: usize) -> Option<&Arc<A>> {
-        let i    = self.map_index(index)?;
-        let node = self.node_for(i);
-        match node.get(i & HASH_MASK as usize) {
-            Some(&Entry::Value(ref value)) => Some(value),
-            Some(&Entry::Node(_)) => panic!("Vector::get_ref: encountered node, expected value"),
-            Some(&Entry::Empty) => panic!("Vector::get_ref: encountered null, expected value"),
-            None => panic!("Vector::get_ref: unhandled index out of bounds situation!"),
-        }
-    }
-
-    /// Get the value at index `index` in a vector, directly.
-    ///
-    /// Panics if the index is out of bounds.
-    ///
-    /// Time: O(log n)
-    pub fn get_unwrapped(&self, index: usize) -> Arc<A> {
-        self.get(index).expect("get_unwrapped index out of bounds")
-    }
-
     /// Create a new vector with the value at index `index` updated.
     ///
     /// Panics if the index is out of bounds.
     ///
     /// Time: O(log n)
     pub fn set<RA>(&self, index: usize, value: RA) -> Self
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let i = match self.map_index(index) {
             None => panic!("index out of bounds: {} < {}", index, self.len()),
@@ -285,12 +270,12 @@ impl<A> Vector<A> {
         };
         if i >= tail_offset(self.meta.capacity) {
             let mut tail = (*self.tail).clone();
-            tail.set(i & HASH_MASK as usize, Entry::Value(value.shared()));
+            tail.set(i & HASH_MASK as usize, Entry::Value(value.into()));
             self.update_tail(tail)
         } else {
             self.update_root(
                 self.root
-                    .set_in(self.meta.level, i, Entry::Value(value.shared())),
+                    .set_in(self.meta.level, i, Entry::Value(value.into())),
             )
         }
     }
@@ -305,8 +290,8 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn set_mut<RA>(&mut self, index: usize, value: RA)
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let i = match self.map_index(index) {
             None => panic!("index out of bounds: {} < {}", index, self.len()),
@@ -314,10 +299,10 @@ impl<A> Vector<A> {
         };
         if i >= tail_offset(self.meta.capacity) {
             let tail = Arc::make_mut(&mut self.tail);
-            tail.set(i & HASH_MASK as usize, Entry::Value(value.shared()));
+            tail.set(i & HASH_MASK as usize, Entry::Value(value.into()));
         } else {
             let root = Arc::make_mut(&mut self.root);
-            root.set_in_mut(self.meta.level, 0, i, Entry::Value(value.shared()))
+            root.set_in_mut(self.meta.level, 0, i, Entry::Value(value.into()))
         }
     }
 
@@ -326,13 +311,13 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn push_back<RA>(&self, value: RA) -> Self
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let len = self.len();
         let mut v = self.clone();
         v.resize(0, (len + 1) as isize);
-        v.set_mut(len, value.shared());
+        v.set_mut(len, value.into());
         v
     }
 
@@ -351,8 +336,8 @@ impl<A> Vector<A> {
     /// [cons]: #method.cons
     #[inline]
     pub fn snoc<RA>(&self, a: RA) -> Self
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         self.push_back(a)
     }
@@ -366,12 +351,12 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn push_back_mut<RA>(&mut self, value: RA)
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let len = self.len();
         self.resize(0, (len + 1) as isize);
-        self.set_mut(len, value.shared());
+        self.set_mut(len, value.into());
     }
 
     /// Construct a vector with a new value prepended to the front of
@@ -379,12 +364,12 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn push_front<RA>(&self, value: RA) -> Self
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let mut v = self.clone();
         v.resize(-1, self.len() as isize);
-        v.set_mut(0, value.shared());
+        v.set_mut(0, value.into());
         v
     }
 
@@ -399,8 +384,8 @@ impl<A> Vector<A> {
     /// [push_front]: #method.push_front
     #[inline]
     pub fn cons<RA>(&self, a: RA) -> Self
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         self.push_front(a)
     }
@@ -414,12 +399,12 @@ impl<A> Vector<A> {
     ///
     /// Time: O(log n)
     pub fn push_front_mut<RA>(&mut self, value: RA)
-    where
-        RA: Shared<A>,
+        where
+            RA: Into<A>,
     {
         let len = self.len();
         self.resize(-1, len as isize);
-        self.set_mut(0, value.shared());
+        self.set_mut(0, value.into());
     }
 
     /// Get the last element of a vector, as well as the vector with
@@ -430,7 +415,7 @@ impl<A> Vector<A> {
     /// Time: O(log n)
     ///
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_back(&self) -> Option<(Arc<A>, Self)> {
+    pub fn pop_back(&self) -> Option<(&A, Self)> {
         if self.is_empty() {
             return None;
         }
@@ -447,13 +432,13 @@ impl<A> Vector<A> {
     /// safely copied before mutating.
     ///
     /// Time: O(log n)
-    pub fn pop_back_mut(&mut self) -> Option<Arc<A>> {
+    pub fn pop_back_mut(&mut self) -> Option<A> {
         if self.is_empty() {
             return None;
         }
-        let val = self.get(self.len() - 1).unwrap();
+        let val = self.get(self.len() - 1).cloned();
         self.resize(0, -1);
-        Some(val)
+        val
     }
 
     /// Get the first element of a vector, as well as the vector with
@@ -464,7 +449,7 @@ impl<A> Vector<A> {
     /// Time: O(log n)
     ///
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_front(&self) -> Option<(Arc<A>, Self)> {
+    pub fn pop_front(&self) -> Option<(&A, Self)> {
         if self.is_empty() {
             return None;
         }
@@ -485,7 +470,7 @@ impl<A> Vector<A> {
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     /// [pop_front]: #method.pop_front
     #[inline]
-    pub fn uncons(&self) -> Option<(Arc<A>, Self)> {
+    pub fn uncons(&self) -> Option<(&A, Self)> {
         self.pop_front()
     }
 
@@ -501,7 +486,7 @@ impl<A> Vector<A> {
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     /// [pop_back]: #method.pop_back
     #[inline]
-    pub fn unsnoc(&self) -> Option<(Arc<A>, Vector<A>)> {
+    pub fn unsnoc(&self) -> Option<(&A, Self)> {
         self.pop_back()
     }
 
@@ -512,14 +497,14 @@ impl<A> Vector<A> {
     /// safely copied before mutating.
     ///
     /// Time: O(log n)
-    pub fn pop_front_mut(&mut self) -> Option<Arc<A>> {
+    pub fn pop_front_mut(&mut self) -> Option<A> {
         if self.is_empty() {
             return None;
         }
         let len = self.len();
-        let val = self.get(0).unwrap();
+        let val = self.get(0).cloned();
         self.resize(1, len as isize);
-        Some(val)
+        val
     }
 
     /// Split a vector at a given index, returning a vector containing
@@ -588,13 +573,13 @@ impl<A> Vector<A> {
     /// # }
     /// ```
     pub fn append<R>(&self, other: R) -> Self
-    where
-        R: Borrow<Self>,
+        where
+            R: Borrow<Self>,
     {
         let o = other.borrow();
         let mut v = self.clone();
         v.resize(0, (self.len() + o.len()) as isize);
-        v.write(self.len(), o);
+        v.write(self.len(), o.clone().into_iter());
         v
     }
 
@@ -605,11 +590,11 @@ impl<A> Vector<A> {
     /// ends or the end of the vector is reached.
     ///
     /// Time: O(n) where n = the length of the iterator
-    pub fn write<I: IntoIterator<Item = R>, R: Shared<A>>(&mut self, index: usize, iter: I) {
+    pub fn write<I: IntoIterator<Item=R>, R: Into<A>>(&mut self, index: usize, iter: I) {
         if let Some(raw_index) = self.map_index(index) {
             let cap = self.meta.capacity;
             let tail_offset = tail_offset(cap);
-            let mut it = iter.into_iter().map(|i| i.shared());
+            let mut it = iter.into_iter().map(|i| i.into());
             if raw_index >= tail_offset {
                 let mut tail = Arc::make_mut(&mut self.tail);
                 let mut i = raw_index - tail_offset;
@@ -646,7 +631,9 @@ impl<A> Vector<A> {
             }
         }
     }
+}
 
+impl<A> Vector<A> {
     /// Construct a vector which is the reverse of the current vector.
     ///
     /// Time: O(1)
@@ -693,7 +680,9 @@ impl<A> Vector<A> {
     pub fn reverse_mut(&mut self) {
         self.meta.reverse = !self.meta.reverse;
     }
+}
 
+impl<A: Clone> Vector<A> {
     /// Sort a vector of ordered elements.
     ///
     /// Time: O(n log n) worst case
@@ -711,8 +700,8 @@ impl<A> Vector<A> {
     /// # }
     /// ```
     pub fn sort(&self) -> Self
-    where
-        A: Ord,
+        where
+            A: Ord,
     {
         self.sort_by(Ord::cmp)
     }
@@ -721,14 +710,14 @@ impl<A> Vector<A> {
     ///
     /// Time: O(n log n) roughly
     pub fn sort_by<F>(&self, cmp: F) -> Self
-    where
-        F: Fn(&A, &A) -> Ordering,
+        where
+            F: Fn(&A, &A) -> Ordering,
     {
         // FIXME: This is a simple in-place quicksort. There are
         // probably faster algorithms.
-        fn swap<A>(vector: &mut Vector<A>, a: usize, b: usize) {
-            let aval = vector.get(a).unwrap();
-            let bval = vector.get(b).unwrap();
+        fn swap<A: Clone>(vector: &mut Vector<A>, a: usize, b: usize) {
+            let aval = vector.get(a).unwrap().clone();
+            let bval = vector.get(b).unwrap().clone();
             vector.set_mut(a, bval);
             vector.set_mut(b, aval);
         }
@@ -737,8 +726,9 @@ impl<A> Vector<A> {
         // http://www.cs.princeton.edu/~rs/talks/QuicksortIsOptimal.pdf
         #[cfg_attr(feature = "clippy", allow(many_single_char_names))]
         fn quicksort<A, F>(vector: &mut Vector<A>, l: usize, r: usize, cmp: &F)
-        where
-            F: Fn(&A, &A) -> Ordering,
+            where
+                A: Clone,
+                F: Fn(&A, &A) -> Ordering,
         {
             if r <= l {
                 return;
@@ -748,7 +738,7 @@ impl<A> Vector<A> {
             let mut j = r;
             let mut p = i;
             let mut q = j;
-            let v = vector.get(r).unwrap();
+            let v = vector.get(r).unwrap().clone();
             loop {
                 while cmp(&vector.get_unwrapped(i), &v) == Ordering::Less {
                     i += 1
@@ -832,32 +822,32 @@ impl<A> Vector<A> {
     ///
     /// [ordset::OrdSet]: ../ordset/struct.OrdSet.html
     pub fn insert<RA>(&self, item: RA) -> Self
-    where
-        A: Ord,
-        RA: Shared<A>,
+        where
+            A: Ord,
+            RA: Into<A>,
     {
-        let value = item.shared();
+        let value = item.into();
         let mut out = Vector::new();
-        let mut inserted = false;
-        for next in self {
-            if next < value {
-                out.push_back_mut(next);
-                continue;
+        let mut iter = self.iter();
+
+        while let Some(next) = iter.next() {
+            if next < &value {
+                out.push_back_mut(next.clone());
+            } else {
+                out.push_back_mut(value);
+                out.push_back_mut(next.clone());
+                out.extend(iter.map(A::clone));
+                return out;
             }
-            if !inserted {
-                out.push_back_mut(value.clone());
-                inserted = true;
-            }
-            out.push_back_mut(next);
         }
-        if !inserted {
-            out.push_back_mut(value);
-        }
+
+        out.push_back_mut(value);
         out
     }
-
+}
     // Implementation details
 
+impl<A> Vector<A> {
     fn map_index(&self, index: usize) -> Option<usize> {
         let len = self.len();
         if index >= len {
@@ -880,11 +870,11 @@ impl<A> Vector<A> {
             let mut level = self.meta.level;
             while level > 0 {
                 node = if let Some(&Entry::Node(ref child_node)) =
-                    node.children.get((index >> level) & HASH_MASK as usize)
-                {
-                    level -= HASH_BITS;
-                    child_node
-                } else {
+                node.children.get((index >> level) & HASH_MASK as usize)
+                    {
+                        level -= HASH_BITS;
+                        child_node
+                    } else {
                     panic!("Vector::node_for: encountered value or null where node was expected")
                 };
             }
@@ -897,7 +887,9 @@ impl<A> Vector<A> {
         self.root = Default::default();
         self.tail = Default::default();
     }
+}
 
+impl<A: Clone> Vector<A> {
     fn resize(&mut self, mut start: isize, mut end: isize) {
         if self.meta.reverse {
             let len = self.len() as isize;
@@ -1124,7 +1116,7 @@ impl<A: Ord> Ord for Vector<A> {
     }
 }
 
-impl<A> Add for Vector<A> {
+impl<A: Clone> Add for Vector<A> {
     type Output = Vector<A>;
 
     fn add(mut self, other: Self) -> Self::Output {
@@ -1133,13 +1125,11 @@ impl<A> Add for Vector<A> {
     }
 }
 
-impl<'a, A> Add for &'a Vector<A> {
+impl<'a, A: Clone> Add for &'a Vector<A> {
     type Output = Vector<A>;
 
     fn add(self, other: Self) -> Self::Output {
-        let mut out = self.clone();
-        out.extend(other);
-        out
+        self.clone() + other.clone()
     }
 }
 
@@ -1151,7 +1141,7 @@ impl<A: Hash> Hash for Vector<A> {
     }
 }
 
-impl<A> Sum for Vector<A> {
+impl<A: Clone> Sum for Vector<A> {
     fn sum<I>(it: I) -> Self
     where
         I: Iterator<Item = Self>,
@@ -1160,7 +1150,7 @@ impl<A> Sum for Vector<A> {
     }
 }
 
-impl<A, R: Shared<A>> Extend<R> for Vector<A> {
+impl<A: Clone, R: Into<A>> Extend<R> for Vector<A> {
     fn extend<I>(&mut self, iter: I)
     where
         I: IntoIterator<Item = R>,
@@ -1214,7 +1204,7 @@ where
             root.ref_mut(self.meta.level, 0, i)
         };
         match *entry {
-            Entry::Value(ref mut value) => Arc::make_mut(value),
+            Entry::Value(ref mut value) => value,
             _ => panic!("Vector::index_mut: vector structure inconsistent"),
         }
     }
@@ -1222,7 +1212,7 @@ where
 
 // Conversions
 
-impl<A, RA: Shared<A>> FromIterator<RA> for Vector<A> {
+impl<A: Clone, RA: Into<A>> FromIterator<RA> for Vector<A> {
     fn from_iter<T>(iter: T) -> Self
     where
         T: IntoIterator<Item = RA>,
@@ -1233,25 +1223,16 @@ impl<A, RA: Shared<A>> FromIterator<RA> for Vector<A> {
     }
 }
 
-impl<A> IntoIterator for Vector<A> {
-    type Item = Arc<A>;
-    type IntoIter = Iter<A>;
+impl<A: Clone> IntoIterator for Vector<A> {
+    type Item = A;
+    type IntoIter = IntoIter<A>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.iter()
+        IntoIter::new(self.clone())
     }
 }
 
-impl<'a, A> IntoIterator for &'a Vector<A> {
-    type Item = Arc<A>;
-    type IntoIter = Iter<A>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.iter()
-    }
-}
-
-impl<A> From<Vec<A>> for Vector<A> {
+impl<A: Clone> From<Vec<A>> for Vector<A> {
     fn from(v: Vec<A>) -> Self {
         v.into_iter().collect()
     }
@@ -1260,7 +1241,7 @@ impl<A> From<Vec<A>> for Vector<A> {
 // Iterators
 
 /// An iterator over vectors with values of type `A`.
-pub struct Iter<A> {
+pub struct IntoIter<A> {
     vector: Vector<A>,
     start_node: Arc<Node<A>>,
     start_index: usize,
@@ -1270,13 +1251,13 @@ pub struct Iter<A> {
     end_offset: usize,
 }
 
-impl<A> Iter<A> {
+impl<A: Clone> IntoIter<A> {
     fn new(vector: Vector<A>) -> Self {
         let start = vector.meta.origin;
         let start_index = start & !(HASH_MASK as usize);
         let end = vector.meta.capacity;
         let end_index = end & !(HASH_MASK as usize);
-        Iter {
+        IntoIter {
             start_node: vector.node_for(start_index).clone(),
             end_node: vector.node_for(end_index).clone(),
             start_index,
@@ -1287,14 +1268,14 @@ impl<A> Iter<A> {
         }
     }
 
-    fn get_next(&mut self) -> Option<Arc<A>> {
+    fn get_next(&mut self) -> Option<A> {
         if self.start_index + self.start_offset == self.end_index + self.end_offset {
             return None;
         }
         if self.start_offset < HASH_SIZE {
             let item = self.start_node.get(self.start_offset).unwrap().unwrap_val();
             self.start_offset += 1;
-            return Some(item);
+            return Some(item.clone());
         }
         self.start_offset = 0;
         self.start_index += HASH_SIZE;
@@ -1302,14 +1283,14 @@ impl<A> Iter<A> {
         self.get_next()
     }
 
-    fn get_next_back(&mut self) -> Option<Arc<A>> {
+    fn get_next_back(&mut self) -> Option<A> {
         if self.start_index + self.start_offset == self.end_index + self.end_offset {
             return None;
         }
         if self.end_offset > 0 {
             self.end_offset -= 1;
             let item = self.end_node.get(self.end_offset).unwrap().unwrap_val();
-            return Some(item);
+            return Some(item.clone());
         }
         self.end_offset = HASH_SIZE;
         self.end_index -= HASH_SIZE;
@@ -1318,8 +1299,8 @@ impl<A> Iter<A> {
     }
 }
 
-impl<A> Iterator for Iter<A> {
-    type Item = Arc<A>;
+impl<A: Clone> Iterator for IntoIter<A> {
+    type Item = A;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.vector.meta.reverse {
@@ -1335,7 +1316,7 @@ impl<A> Iterator for Iter<A> {
     }
 }
 
-impl<A> DoubleEndedIterator for Iter<A> {
+impl<A: Clone> DoubleEndedIterator for IntoIter<A> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.vector.meta.reverse {
             self.get_next()
@@ -1345,11 +1326,11 @@ impl<A> DoubleEndedIterator for Iter<A> {
     }
 }
 
-impl<A> ExactSizeIterator for Iter<A> {}
+impl<A: Clone> ExactSizeIterator for IntoIter<A> {}
 
 // By-reference iterator
 
-pub struct RefIter<'b, A: 'b> {
+pub struct Iter<'b, A: 'b> {
     vector: &'b Vector<A>,
     start_node: &'b Node<A>,
     start_index: usize,
@@ -1359,13 +1340,13 @@ pub struct RefIter<'b, A: 'b> {
     end_offset: usize,
 }
 
-impl<'b, A> RefIter<'b, A> {
+impl<'b, A> Iter<'b, A> {
     fn new(vector: &'b Vector<A>) -> Self {
         let start = vector.meta.origin;
         let start_index = start & !(HASH_MASK as usize);
         let end = vector.meta.capacity;
         let end_index = end & !(HASH_MASK as usize);
-        RefIter {
+        Iter {
             start_node: &vector.node_for(start_index),
             end_node: &vector.node_for(end_index),
             start_index,
@@ -1376,13 +1357,13 @@ impl<'b, A> RefIter<'b, A> {
         }
     }
 
-    fn get_next(&mut self) -> Option<&'b Arc<A>> {
+    fn get_next(&mut self) -> Option<&'b A> {
         loop {
             if self.len() == 0 {
                 return None;
             }
             if self.start_offset < HASH_SIZE {
-                let item = self.start_node.get(self.start_offset).unwrap().unwrap_val_ref();
+                let item = self.start_node.get(self.start_offset).unwrap().unwrap_val();
                 self.start_offset += 1;
                 return Some(item);
             }
@@ -1392,14 +1373,14 @@ impl<'b, A> RefIter<'b, A> {
         }
     }
 
-    fn get_next_back(&mut self) -> Option<&'b Arc<A>> {
+    fn get_next_back(&mut self) -> Option<&'b A> {
         loop {
             if self.len() == 0 {
                 return None;
             }
             if self.end_offset > 0 {
                 self.end_offset -= 1;
-                let item = self.end_node.get(self.end_offset).unwrap().unwrap_val_ref();
+                let item = self.end_node.get(self.end_offset).unwrap().unwrap_val();
                 return Some(item);
             }
             self.end_offset = HASH_SIZE;
@@ -1409,8 +1390,8 @@ impl<'b, A> RefIter<'b, A> {
     }
 }
 
-impl<'b, A> Iterator for RefIter<'b, A> {
-    type Item = &'b Arc<A>;
+impl<'b, A> Iterator for Iter<'b, A> {
+    type Item = &'b A;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.vector.meta.reverse {
@@ -1426,7 +1407,7 @@ impl<'b, A> Iterator for RefIter<'b, A> {
     }
 }
 
-impl<'b, A> DoubleEndedIterator for RefIter<'b, A> {
+impl<'b, A> DoubleEndedIterator for Iter<'b, A> {
     fn next_back(&mut self) -> Option<Self::Item> {
         if self.vector.meta.reverse {
             self.get_next()
@@ -1436,9 +1417,18 @@ impl<'b, A> DoubleEndedIterator for RefIter<'b, A> {
     }
 }
 
-impl<'b, A> ExactSizeIterator for RefIter<'b, A> {
+impl<'b, A> ExactSizeIterator for Iter<'b, A> {
     fn len(&self) -> usize {
         (self.end_index + self.end_offset) - (self.start_index + self.start_offset)
+    }
+}
+
+impl<'b, A> IntoIterator for &'b Vector<A> {
+    type Item = &'b A;
+    type IntoIter = Iter<'b, A>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        Iter::new(self)
     }
 }
 
@@ -1478,7 +1468,10 @@ pub mod proptest {
     pub fn vector<T: Strategy + 'static>(
         element: T,
         size: Range<usize>,
-    ) -> BoxedStrategy<Vector<<T::Value as ValueTree>::Value>> {
+    ) -> BoxedStrategy<Vector<<T::Value as ValueTree>::Value>>
+        where
+            <T::Value as ValueTree>::Value: Clone,
+    {
         ::proptest::collection::vec(element, size)
             .prop_map(Vector::from_iter)
             .boxed()
@@ -1512,10 +1505,10 @@ mod test {
 
     #[test]
     fn wat() {
-        let v1 = Vec::from_iter((0..1000).into_iter().map(Arc::new));
+        let v1 = Vec::from_iter(0..1000);
         let v2 = Vector::from_iter(0..1000);
         for (i, item) in v1.into_iter().enumerate() {
-            assert_eq!(Some(item), v2.get(i));
+            assert_eq!(Some(&item), v2.get(i));
         }
     }
 
@@ -1523,11 +1516,11 @@ mod test {
     fn double_ended_iterator() {
         let vector = Vector::<i32>::from_iter(1..6);
         let mut it = vector.iter();
-        assert_eq!(Some(Arc::new(1)), it.next());
-        assert_eq!(Some(Arc::new(5)), it.next_back());
-        assert_eq!(Some(Arc::new(2)), it.next());
-        assert_eq!(Some(Arc::new(4)), it.next_back());
-        assert_eq!(Some(Arc::new(3)), it.next());
+        assert_eq!(Some(&1), it.next());
+        assert_eq!(Some(&5), it.next_back());
+        assert_eq!(Some(&2), it.next());
+        assert_eq!(Some(&4), it.next_back());
+        assert_eq!(Some(&3), it.next());
         assert_eq!(None, it.next_back());
         assert_eq!(None, it.next());
     }
@@ -1537,8 +1530,8 @@ mod test {
         let v1 = Vector::from_iter(0..131072);
         let mut v2 = v1.clone();
         v2.set_mut(131000, 23);
-        assert_eq!(Some(Arc::new(23)), v2.get(131000));
-        assert_eq!(Some(Arc::new(131000)), v1.get(131000));
+        assert_eq!(Some(&23), v2.get(131000));
+        assert_eq!(Some(&131000), v1.get(131000));
     }
 
     #[test]
@@ -1556,6 +1549,24 @@ mod test {
         assert_eq!(vector![1, 2, 3, 4, 5, 6], vec1 + vec2);
     }
 
+    #[test]
+    fn insert() {
+        assert_eq!(vector![1].insert(2), vector![1, 2]);
+        assert_eq!(vector![2].insert(1), vector![1, 2]);
+        assert_eq!(vector![1, 3].insert(0), vector![0, 1, 3]);
+        assert_eq!(vector![1, 3].insert(1), vector![1, 1, 3]);
+        assert_eq!(vector![1, 3].insert(2), vector![1, 2, 3]);
+        assert_eq!(vector![1, 3].insert(3), vector![1, 3, 3]);
+        assert_eq!(vector![1, 3].insert(4), vector![1, 3, 4]);
+        assert_eq!(vector![1, 3, 5].insert(0), vector![0, 1, 3, 5]);
+        assert_eq!(vector![1, 3, 5].insert(1), vector![1, 1, 3, 5]);
+        assert_eq!(vector![1, 3, 5].insert(2), vector![1, 2, 3, 5]);
+        assert_eq!(vector![1, 3, 5].insert(3), vector![1, 3, 3, 5]);
+        assert_eq!(vector![1, 3, 5].insert(4), vector![1, 3, 4, 5]);
+        assert_eq!(vector![1, 3, 5].insert(5), vector![1, 3, 5, 5]);
+        assert_eq!(vector![1, 3, 5].insert(6), vector![1, 3, 5, 6]);
+    }
+
     proptest! {
         #[test]
         fn push_back(ref input in collection::vec(i32::ANY, 0..100)) {
@@ -1566,7 +1577,7 @@ mod test {
                 assert_eq!(count + 1, vector.len());
             }
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
@@ -1579,13 +1590,13 @@ mod test {
                 assert_eq!(count + 1, vector.len());
             }
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
         #[test]
         fn push_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::new();
+            let mut vector = Vector::<i32>::new();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_front(value);
@@ -1596,7 +1607,7 @@ mod test {
 
         #[test]
         fn push_front_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::new();
+            let mut vector = Vector::<i32>::new();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector.push_front_mut(value);
@@ -1610,7 +1621,7 @@ mod test {
             let vector = Vector::from_iter(input.iter().cloned());
             assert_eq!(vector.len(), input.len());
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
@@ -1623,7 +1634,7 @@ mod test {
             }
             assert_eq!(vector.len(), input.len());
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
@@ -1636,21 +1647,21 @@ mod test {
             }
             assert_eq!(vector.len(), input.len());
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
         #[test]
         fn pop_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned());
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
-                match vector.pop_back() {
+                match vector.pop_back().map(|(h, t)| (*h, t)) {
                     None => panic!("vector emptied unexpectedly"),
                     Some((item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
@@ -1659,14 +1670,14 @@ mod test {
 
         #[test]
         fn pop_back_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned());
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_back_mut() {
                     None => panic!("vector emptied unexpectedly"),
                     Some(item) => {
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
@@ -1675,15 +1686,15 @@ mod test {
 
         #[test]
         fn pop_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned());
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
-                match vector.pop_front() {
+                match vector.pop_front().map(|(h, t)| (*h, t)) {
                     None => panic!("vector emptied unexpectedly"),
                     Some((item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
@@ -1692,14 +1703,14 @@ mod test {
 
         #[test]
         fn pop_front_mut(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned());
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_front_mut() {
                     None => panic!("vector emptied unexpectedly"),
                     Some(item) => {
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
@@ -1708,7 +1719,7 @@ mod test {
 
         #[test]
         fn iterator(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::from_iter(input.iter().cloned());
+            let vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             let mut it1 = input.iter().cloned();
             let mut it2 = vector.iter();
@@ -1724,7 +1735,7 @@ mod test {
 
         #[test]
         fn reverse_iterator(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::from_iter(input.iter().cloned());
+            let vector = Vector::<i32>::from_iter(input.iter().cloned());
             assert_eq!(input.len(), vector.len());
             let mut it1 = input.iter().cloned().rev();
             let mut it2 = vector.iter().rev();
@@ -1754,7 +1765,7 @@ mod test {
 
         #[test]
         fn sort(ref input in collection::vec(i32::ANY, 0..100)) {
-            let vector = Vector::from_iter(input.iter().cloned());
+            let vector = Vector::<i32>::from_iter(input.iter().cloned());
             let mut input_sorted = input.clone();
             input_sorted.sort();
             let sorted = Vector::from_iter(input_sorted.iter().cloned());
@@ -1763,21 +1774,21 @@ mod test {
 
         #[test]
         fn reverse(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
             let mut reversed = input.clone();
             reversed.reverse();
             for (index, value) in reversed.into_iter().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
             vector.reverse_mut();
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
         #[test]
         fn reversed_push_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::new().reverse();
+            let mut vector = Vector::<i32>::new().reverse();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_front(value);
@@ -1785,13 +1796,13 @@ mod test {
             }
             vector = vector.reverse();
             for (index, value) in input.iter().cloned().enumerate() {
-                assert_eq!(Some(Arc::new(value)), vector.get(index));
+                assert_eq!(Some(&value), vector.get(index));
             }
         }
 
         #[test]
         fn reversed_push_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::new().reverse();
+            let mut vector = Vector::<i32>::new().reverse();
             for (count, value) in input.iter().cloned().enumerate() {
                 assert_eq!(count, vector.len());
                 vector = vector.push_back(value);
@@ -1803,15 +1814,15 @@ mod test {
 
         #[test]
         fn reversed_pop_front(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().enumerate().rev() {
-                match vector.pop_front() {
+                match vector.pop_front().map(|(h, t)| (*h, t)) {
                     None => panic!("vector emptied unexpectedly"),
                     Some((item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
@@ -1820,15 +1831,15 @@ mod test {
 
         #[test]
         fn reversed_pop_back(ref input in collection::vec(i32::ANY, 0..100)) {
-            let mut vector = Vector::from_iter(input.iter().cloned()).reverse();
+            let mut vector = Vector::<i32>::from_iter(input.iter().cloned()).reverse();
             assert_eq!(input.len(), vector.len());
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
-                match vector.pop_back() {
+                match vector.pop_back().map(|(h, t)| (*h, t)) {
                     None => panic!("vector emptied unexpectedly"),
                     Some((item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
-                        assert_eq!(Arc::new(value), item);
+                        assert_eq!(value, item);
                     }
                 }
             }
