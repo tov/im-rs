@@ -342,7 +342,7 @@ impl<A> CatList<A> {
                     CatList::make(
                         l.len() + r.len(),
                         self.head.clone(),
-                        self.tail.push_back(r.clone()),
+                        self.tail.push_back(r.clone().into()),
                     )
                 }
             }
@@ -395,10 +395,10 @@ impl<A> CatList<A> {
             self.tail = other.tail.clone();
         } else if self.tail.is_empty() && self.head.len() + other.head.len() <= HASH_SIZE {
             self.head = Arc::new(other.head.iter().chain(self.head.iter()).cloned().collect());
-            self.tail = Vector::singleton(other.clone());
+            self.tail = Vector::singleton(Arc::new(other.clone()));
             self.size += other.len();
         } else {
-            self.tail.push_back_mut(other.borrow().clone());
+            self.tail.push_back_mut(other.borrow().clone().into());
             self.size += other.len();
         }
     }
@@ -498,7 +498,7 @@ impl<A> CatList<A> {
             let last_node = Arc::make_mut(&mut last);
             let item = last_node.pop_back_mut();
             if !last_node.is_empty() {
-                self.tail.push_back_mut(last_node.clone());
+                self.tail.push_back_mut(last_node.clone().into());
             }
             item
         }

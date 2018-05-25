@@ -127,12 +127,9 @@ impl<A> Vector<A> {
     }
 
     /// Construct a vector with a single value.
-    pub fn singleton<R>(a: R) -> Self
-        where
-            R: Into<A>,
-    {
+    pub fn singleton(a: A) -> Self {
         let mut tail = Node::new();
-        tail.push(Entry::Value(a.into()));
+        tail.push(Entry::Value(a));
         Vector {
             meta: Default::default(),
             root: Default::default(),
@@ -260,22 +257,19 @@ impl<A: Clone> Vector<A> {
     /// Panics if the index is out of bounds.
     ///
     /// Time: O(log n)
-    pub fn set<RA>(&self, index: usize, value: RA) -> Self
-        where
-            RA: Into<A>,
-    {
+    pub fn set(&self, index: usize, value: A) -> Self {
         let i = match self.map_index(index) {
             None => panic!("index out of bounds: {} < {}", index, self.len()),
             Some(i) => i,
         };
         if i >= tail_offset(self.meta.capacity) {
             let mut tail = (*self.tail).clone();
-            tail.set(i & HASH_MASK as usize, Entry::Value(value.into()));
+            tail.set(i & HASH_MASK as usize, Entry::Value(value));
             self.update_tail(tail)
         } else {
             self.update_root(
                 self.root
-                    .set_in(self.meta.level, i, Entry::Value(value.into())),
+                    .set_in(self.meta.level, i, Entry::Value(value)),
             )
         }
     }
@@ -289,20 +283,17 @@ impl<A: Clone> Vector<A> {
     /// safely copied before mutating.
     ///
     /// Time: O(log n)
-    pub fn set_mut<RA>(&mut self, index: usize, value: RA)
-        where
-            RA: Into<A>,
-    {
+    pub fn set_mut(&mut self, index: usize, value: A) {
         let i = match self.map_index(index) {
             None => panic!("index out of bounds: {} < {}", index, self.len()),
             Some(i) => i,
         };
         if i >= tail_offset(self.meta.capacity) {
             let tail = Arc::make_mut(&mut self.tail);
-            tail.set(i & HASH_MASK as usize, Entry::Value(value.into()));
+            tail.set(i & HASH_MASK as usize, Entry::Value(value));
         } else {
             let root = Arc::make_mut(&mut self.root);
-            root.set_in_mut(self.meta.level, 0, i, Entry::Value(value.into()))
+            root.set_in_mut(self.meta.level, 0, i, Entry::Value(value))
         }
     }
 
@@ -310,14 +301,11 @@ impl<A: Clone> Vector<A> {
     /// the current vector.
     ///
     /// Time: O(log n)
-    pub fn push_back<RA>(&self, value: RA) -> Self
-        where
-            RA: Into<A>,
-    {
+    pub fn push_back(&self, value: A) -> Self {
         let len = self.len();
         let mut v = self.clone();
         v.resize(0, (len + 1) as isize);
-        v.set_mut(len, value.into());
+        v.set_mut(len, value);
         v
     }
 
@@ -335,10 +323,7 @@ impl<A: Clone> Vector<A> {
     /// [push_back]: #method.push_back
     /// [cons]: #method.cons
     #[inline]
-    pub fn snoc<RA>(&self, a: RA) -> Self
-        where
-            RA: Into<A>,
-    {
+    pub fn snoc(&self, a: A) -> Self {
         self.push_back(a)
     }
 
@@ -350,26 +335,20 @@ impl<A: Clone> Vector<A> {
     /// safely copied before mutating.
     ///
     /// Time: O(log n)
-    pub fn push_back_mut<RA>(&mut self, value: RA)
-        where
-            RA: Into<A>,
-    {
+    pub fn push_back_mut(&mut self, value: A) {
         let len = self.len();
         self.resize(0, (len + 1) as isize);
-        self.set_mut(len, value.into());
+        self.set_mut(len, value);
     }
 
     /// Construct a vector with a new value prepended to the front of
     /// the current vector.
     ///
     /// Time: O(log n)
-    pub fn push_front<RA>(&self, value: RA) -> Self
-        where
-            RA: Into<A>,
-    {
+    pub fn push_front(&self, value: A) -> Self {
         let mut v = self.clone();
         v.resize(-1, self.len() as isize);
-        v.set_mut(0, value.into());
+        v.set_mut(0, value);
         v
     }
 
@@ -383,10 +362,7 @@ impl<A: Clone> Vector<A> {
     ///
     /// [push_front]: #method.push_front
     #[inline]
-    pub fn cons<RA>(&self, a: RA) -> Self
-        where
-            RA: Into<A>,
-    {
+    pub fn cons(&self, a: A) -> Self {
         self.push_front(a)
     }
 
@@ -398,13 +374,10 @@ impl<A: Clone> Vector<A> {
     /// safely copied before mutating.
     ///
     /// Time: O(log n)
-    pub fn push_front_mut<RA>(&mut self, value: RA)
-        where
-            RA: Into<A>,
-    {
+    pub fn push_front_mut(&mut self, value: A) {
         let len = self.len();
         self.resize(-1, len as isize);
-        self.set_mut(0, value.into());
+        self.set_mut(0, value);
     }
 
     /// Get the last element of a vector, as well as the vector with
@@ -590,11 +563,11 @@ impl<A: Clone> Vector<A> {
     /// ends or the end of the vector is reached.
     ///
     /// Time: O(n) where n = the length of the iterator
-    pub fn write<I: IntoIterator<Item=R>, R: Into<A>>(&mut self, index: usize, iter: I) {
+    pub fn write<I: IntoIterator<Item=A>>(&mut self, index: usize, iter: I) {
         if let Some(raw_index) = self.map_index(index) {
             let cap = self.meta.capacity;
             let tail_offset = tail_offset(cap);
-            let mut it = iter.into_iter().map(|i| i.into());
+            let mut it = iter.into_iter();
             if raw_index >= tail_offset {
                 let mut tail = Arc::make_mut(&mut self.tail);
                 let mut i = raw_index - tail_offset;
@@ -821,27 +794,25 @@ impl<A: Clone> Vector<A> {
     /// ```
     ///
     /// [ordset::OrdSet]: ../ordset/struct.OrdSet.html
-    pub fn insert<RA>(&self, item: RA) -> Self
+    pub fn insert(&self, item: A) -> Self
         where
             A: Ord,
-            RA: Into<A>,
     {
-        let value = item.into();
         let mut out = Vector::new();
         let mut iter = self.iter();
 
         while let Some(next) = iter.next() {
-            if next < &value {
+            if next < &item {
                 out.push_back_mut(next.clone());
             } else {
-                out.push_back_mut(value);
+                out.push_back_mut(item);
                 out.push_back_mut(next.clone());
                 out.extend(iter.map(A::clone));
                 return out;
             }
         }
 
-        out.push_back_mut(value);
+        out.push_back_mut(item);
         out
     }
 }
@@ -1150,10 +1121,10 @@ impl<A: Clone> Sum for Vector<A> {
     }
 }
 
-impl<A: Clone, R: Into<A>> Extend<R> for Vector<A> {
+impl<A: Clone> Extend<A> for Vector<A> {
     fn extend<I>(&mut self, iter: I)
     where
-        I: IntoIterator<Item = R>,
+        I: IntoIterator<Item = A>,
     {
         let len = self.len();
         let it = iter.into_iter();
@@ -1212,10 +1183,10 @@ where
 
 // Conversions
 
-impl<A: Clone, RA: Into<A>> FromIterator<RA> for Vector<A> {
+impl<A: Clone> FromIterator<A> for Vector<A> {
     fn from_iter<T>(iter: T) -> Self
     where
-        T: IntoIterator<Item = RA>,
+        T: IntoIterator<Item = A>,
     {
         let mut v = Vector::new();
         v.extend(iter);
