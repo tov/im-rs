@@ -12,6 +12,52 @@ use test::Bencher;
 
 use im::vector::Vector;
 
+fn vector_sum_iter(b: &mut Bencher, count: usize) {
+    let v = Vector::from_iter(0..count);
+    b.iter(|| v.clone().iter().map(|x| *x).sum::<usize>())
+}
+
+#[bench]
+fn vector_sum_iter_10(b: &mut Bencher) {
+    vector_sum_iter(b, 10);
+}
+
+#[bench]
+fn vector_sum_iter_100(b: &mut Bencher) {
+    vector_sum_iter(b, 100);
+}
+
+#[bench]
+fn vector_sum_iter_1000(b: &mut Bencher) {
+    vector_sum_iter(b, 1000);
+}
+
+fn vector_sum_get(b: &mut Bencher, count: usize) {
+    let v = Vector::from_iter(0..count);
+    b.iter(|| {
+        let mut sum = 0;
+        for i in 0 .. v.len() {
+            sum += *v.get(i).unwrap();
+        }
+        sum
+    })
+}
+
+#[bench]
+fn vector_sum_get_10(b: &mut Bencher) {
+    vector_sum_get(b, 10);
+}
+
+#[bench]
+fn vector_sum_get_100(b: &mut Bencher) {
+    vector_sum_get(b, 100);
+}
+
+#[bench]
+fn vector_sum_get_1000(b: &mut Bencher) {
+    vector_sum_get(b, 1000);
+}
+
 fn vector_push_front(b: &mut Bencher, count: usize) {
     b.iter(|| {
         let mut l = Vector::new();
