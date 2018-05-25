@@ -44,9 +44,15 @@ fn conslist_append(b: &mut Bencher) {
 }
 
 #[bench]
-fn conslist_sum(b: &mut Bencher) {
+fn conslist_sum_iter(b: &mut Bencher) {
     let l = ConsList::from_iter(0..1000);
     b.iter(|| l.iter().fold(0, |acc, x| acc + *x))
+}
+
+#[bench]
+fn conslist_sum_ref_iter(b: &mut Bencher) {
+    let l = ConsList::from_iter(0..1000);
+    b.iter(|| l.ref_iter().fold(0, |acc, x| acc + **x))
 }
 
 #[bench]

@@ -368,6 +368,12 @@ impl<A> ConsList<A> {
         }
     }
 
+    pub fn ref_iter(&self) -> RefIter<A> {
+        RefIter {
+            current: self,
+        }
+    }
+
     /// Sort a list using a comparator function.
     ///
     /// Time: O(n log n)
@@ -692,6 +698,41 @@ impl<A> IntoIterator for ConsList<A> {
 
     fn into_iter(self) -> Iter<A> {
         self.iter()
+    }
+}
+
+pub struct RefIter<'b, A: 'b> {
+    current: &'b ConsList<A>,
+}
+
+impl<'b, A> Iterator for RefIter<'b, A> {
+    type Item = &'b Arc<A>;
+
+    fn next(&mut self) -> Option<&'b Arc<A>> {
+        let list = mem::replace(&mut self.current, &ConsList(None));
+        match list.uncons() {
+            None => None,
+            Some((car, cdr)) => {
+                self.current = cdr;
+                Some(car)
+            }
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let len = self.current.len();
+        (len, Some(len))
+    }
+}
+
+impl<'b, A> ExactSizeIterator for RefIter<'b, A> {}
+
+impl<'b, A> IntoIterator for &'b ConsList<A> {
+    type Item = &'b Arc<A>;
+    type IntoIter = RefIter<'b, A>;
+
+    fn into_iter(self) -> RefIter<'b, A> {
+        self.ref_iter()
     }
 }
 
