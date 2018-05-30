@@ -59,12 +59,11 @@ macro_rules! vector {
     () => { $crate::vector::Vector::new() };
 
     ( $($x:expr),* ) => {{
-        fn vec_to_vector<A: ::std::clone::Clone>(vec: ::std::vec::Vec<A>)
-            -> $crate::vector::Vector<A>
-        {
-            ::std::iter::FromIterator::from_iter(vec)
-        }
-        vec_to_vector(vec![$($x),*])
+        let mut result = $crate::vector::Vector::new();
+        $(
+            result.push_back_mut($x);
+        )*
+        result
     }};
 }
 
@@ -380,18 +379,6 @@ impl<A: Clone> Vector<A> {
         self.set_mut(0, value);
     }
 
-    /// Get a clone of the last element of a vector, as well as the vector with
-    /// the last element removed.
-    ///
-    /// If the vector is empty, [`None`][None] is returned.
-    ///
-    /// Time: O(log n)
-    ///
-    /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_back(&self) -> Option<(A, Self)> {
-        self.pop_back_ref().map(|(h, t)| (h.clone(), t))
-    }
-
     /// Get a reference to the last element of a vector, as well as the vector with
     /// the last element removed.
     ///
@@ -400,7 +387,7 @@ impl<A: Clone> Vector<A> {
     /// Time: O(log n)
     ///
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_back_ref(&self) -> Option<(&A, Self)> {
+    pub fn pop_back(&self) -> Option<(&A, Self)> {
         if self.is_empty() {
             return None;
         }
@@ -426,18 +413,6 @@ impl<A: Clone> Vector<A> {
         val
     }
 
-    /// Get a clone of the first element of a vector, as well as the vector with
-    /// the first element removed.
-    ///
-    /// If the vector is empty, [`None`][None] is returned.
-    ///
-    /// Time: O(log n)
-    ///
-    /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_front(&self) -> Option<(A, Self)> {
-        self.pop_front_ref().map(|(h, t)| (h.clone(), t))
-    }
-
     /// Get a reference to the first element of a vector, as well as the vector
     /// with the first element removed.
     ///
@@ -446,7 +421,7 @@ impl<A: Clone> Vector<A> {
     /// Time: O(log n)
     ///
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
-    pub fn pop_front_ref(&self) -> Option<(&A, Self)> {
+    pub fn pop_front(&self) -> Option<(&A, Self)> {
         if self.is_empty() {
             return None;
         }
@@ -467,7 +442,7 @@ impl<A: Clone> Vector<A> {
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     /// [pop_front]: #method.pop_front
     #[inline]
-    pub fn uncons(&self) -> Option<(A, Self)> {
+    pub fn uncons(&self) -> Option<(&A, Self)> {
         self.pop_front()
     }
 
@@ -483,7 +458,7 @@ impl<A: Clone> Vector<A> {
     /// [None]: https://doc.rust-lang.org/std/option/enum.Option.html#variant.None
     /// [pop_back]: #method.pop_back
     #[inline]
-    pub fn unsnoc(&self) -> Option<(A, Self)> {
+    pub fn unsnoc(&self) -> Option<(&A, Self)> {
         self.pop_back()
     }
 
@@ -1653,7 +1628,7 @@ mod test {
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_back() {
                     None => panic!("vector emptied unexpectedly"),
-                    Some((item, next)) => {
+                    Some((&item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
                         assert_eq!(value, item);
@@ -1686,7 +1661,7 @@ mod test {
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_front() {
                     None => panic!("vector emptied unexpectedly"),
-                    Some((item, next)) => {
+                    Some((&item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
                         assert_eq!(value, item);
@@ -1814,7 +1789,7 @@ mod test {
             for (index, value) in input.iter().cloned().enumerate().rev() {
                 match vector.pop_front() {
                     None => panic!("vector emptied unexpectedly"),
-                    Some((item, next)) => {
+                    Some((&item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
                         assert_eq!(value, item);
@@ -1831,7 +1806,7 @@ mod test {
             for (index, value) in input.iter().cloned().rev().enumerate().rev() {
                 match vector.pop_back() {
                     None => panic!("vector emptied unexpectedly"),
-                    Some((item, next)) => {
+                    Some((&item, next)) => {
                         vector = next;
                         assert_eq!(index, vector.len());
                         assert_eq!(value, item);
